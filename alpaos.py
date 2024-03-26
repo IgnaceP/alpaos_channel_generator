@@ -5,6 +5,7 @@ from pysheds.grid import Grid
 from pysheds.view import Raster
 import laplacian_solver as laplace_cython
 import time
+import pickle
 
 @jit(nopython=True)
 def applyBoundaryConditions(H, boundary_i, boundary_j, outside_mask, chan):
@@ -50,6 +51,28 @@ class AlpaosChannelCreator:
         self.initiateGrid()
         self.findBoundary(w = 10)
 
+    def save(self, pathname):
+        """
+        Method to save channel generator as a pickle
+        :param pathname: directory and filename to save as
+        :return:
+        """
+
+        with open(pathname, 'wb') as output:
+            pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def load(pathname):
+        """
+        Method to load channel generator from a pickle
+        :param pathname: directory and filename to load
+        :return:
+        """
+
+        with open(pathname, 'rb') as input:
+            alp = pickle.load(input)
+
+        return alp
     def outsideNeighbours(self):
         """
         Function to calculate the number of cardinal neigbours which are outside the domain
@@ -195,6 +218,7 @@ class AlpaosChannelCreator:
             self.H = laplace_cython.laplacianIteration(self.H, self.K, self.outside_neighbours)
             self.H = laplace_cython.applyBoundaryConditions(self.H, self.boundary_i, self.boundary_j,
                                                             self.outside_mask, self.chan)
+
             # evaluate convergence
             self.H_maxs.append(np.nanmax(self.H))
 
@@ -208,6 +232,8 @@ class AlpaosChannelCreator:
             else:
                 self.H_prev = self.H.copy()
 
+    def save(self, fn):
+        np.save(fn, self.H)
 
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001, max_iterations = 100000, H_min_iterations = [100,10], T = "Hmean"):
 
@@ -238,13 +264,12 @@ class AlpaosChannelCreator:
                 self.flowdir()
 
                 # select sites with expected activity
-                tau_excess                  = tau - tau_crit
-                exceedance                  = tau_excess * self.neigh
-                exceedance_i, exceedance_j  = np.where(exceedance > 0)
-                exceedance_flat             = exceedance[exceedance_i, exceedance_j]
+                tau_excess                                      = tau - tau_crit
+                self.exceedance = exceedance                    = tau_excess * self.neigh
+                exceedance_i, exceedance_j              = np.where(exceedance > 0)
+                exceedance_flat                             = exceedance[exceedance_i, exceedance_j]
                 exceedance_ij_sorted        = np.argsort(exceedance_flat)[::-1]
                 n_exceedances               = len(exceedance_ij_sorted)
-                print(f"Number of exceedance sites: {len(exceedance_ij_sorted)}")
 
                 t = 0
                 while n_exceedances > 0:
@@ -262,7 +287,7 @@ class AlpaosChannelCreator:
                         new_chan = False
 
                     if new_chan:
-                        print(f'{t}/{n_exceedances}', end='\r')
+                        print(f'took the the {t+1}th of {n_exceedances} candidates.')
 
                         self.chan[i,j] = 1
                         self.newchan[i,j] = 1
