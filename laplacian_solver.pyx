@@ -1,71 +1,63 @@
 # laplacian_solver.pyx
-import numpy as np
-cimport numpy as np
+import cython
 
-def laplacianIteration(np.ndarray[np.float64_t, ndim=2] H,
-                        np.ndarray[np.float64_t, ndim=2] K,
-                        np.ndarray[np.int_t, ndim=2] outside_neighbours):
-    cdef np.ndarray[np.float64_t, ndim=2] laplacian = np.zeros_like(H)
-    cdef Py_ssize_t i, j
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef double[:,:] laplacianSolver(double[:,:] H,
+                                  double[:,:] K,
+                                  int[:,:] boundary_i,
+                                  int[:,:] boundary_j,
+                                  int[:,:] outside_mask,
+                                  int[:,:] chan,
+                                  double resolution,
+                                  double tolerance,
+                                  int max_iterations):
+    cdef double[:,:] result
 
-    for i in range(1, H.shape[0]-1):
-        for j in range(1, H.shape[1]-1):
-            laplacian[i, j] = (H[i-1, j] + H[i+1, j] + H[i, j-1] + H[i, j+1] + K[i, j]) / (4.0 - outside_neighbours[i, j])
+    result = claplacianSolver(H, K, boundary_i, boundary_j, outside_mask, chan, resolution, tolerance, max_iterations)
 
-    return laplacian.astype(np.float64)
+    return result
 
-def applyBoundaryConditions(np.ndarray[np.float64_t, ndim=2] H,
-                            np.ndarray[np.int32_t, ndim=2] boundary_i,
-                            np.ndarray[np.int32_t, ndim=2] boundary_j,
-                            np.ndarray[np.int32_t, ndim=2] outside_mask,
-                            np.ndarray[np.int32_t, ndim=2] chan):
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef double[:,:] claplacianSolver(double[:,:] H,
+                                  double[:,:] K,
+                                  int[:,:] boundary_i,
+                                  int[:,:] boundary_j,
+                                  int[:,:] outside_mask,
+                                  int[:,:] chan,
+                                  double resolution,
+                                  double tolerance,
+                                  int max_iterations):
 
-    cdef np.ndarray[np.float64_t, ndim=2] newH = np.copy(H)
+    cdef int i, j, rows, cols
+    cdef double[:,:] lap
+    cdef double l
 
-    cdef int i, j
-    for i in range(boundary_i.shape[0]):
-        for j in range(boundary_i.shape[1]):
-            if H[boundary_i[i, j], boundary_j[i, j]] > 0:
-                newH[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
+    rows = H.shape[0]
+    cols = H.shape[1]
+    lap  = H
 
-    for i in range(newH.shape[0]):
-        for j in range(newH.shape[1]):
-            if chan[i, j] != 0:
-                newH[i, j] = 0
+    for i in range(max_iterations):
+        #laplacianIteration(H, K, resolution)
+        #applyBoundaryConditions(H, boundary_i, boundary_j, outside_mask, chan)
 
-    for i in range(newH.shape[0]):
-        for j in range(newH.shape[1]):
-            if outside_mask[i, j] != 0:
-                newH[i, j] = 0
+        for i in range(1, rows - 1):
+            for j in range(1, cols - 1):
+                lap[i,j] = (H[i - 1, j] + H[i + 1, j] + H[i, j - 1] + H[i, j + 1] - (resolution ** 2) * K[i, j]) / 4.0
 
-    return newH
+        h = lap
 
-def laplacianSolver(np.ndarray[np.float64_t, ndim=2] H,
-                    np.ndarray[np.float64_t, ndim=2] K,
-                    np.ndarray[np.int_t, ndim=2] outside_neighbours,
-                    np.ndarray[np.int32_t, ndim=2] boundary_i,
-                    np.ndarray[np.int32_t, ndim=2] boundary_j,
-                    np.ndarray[np.int32_t, ndim=2] outside_mask,
-                    np.ndarray[np.int32_t, ndim=2] chan,
-                    int max_iterations):
+        for i in range(rows):
+            for j in range(cols):
+                if H[boundary_i[i, j], boundary_j[i, j]] > 0:
+                    H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
 
-    cdef np.ndarray[np.float64_t, ndim=2] oldH = np.copy(H)
-    cdef np.int32_t continue_flag = 1
-    cdef np.int32_t counter = 0
-    cdef np.ndarray[np.float64_t, ndim=1] H_maxs = np.zeros(max_iterations)
+                if chan[i, j] != 0:
+                    H[i, j] = 0
 
-    for _ in range(max_iterations):
-        H = laplacianIteration(H, K, outside_neighbours)
-        H = applyBoundaryConditions(H, boundary_i, boundary_j, outside_mask, chan)
+                if outside_mask[i, j] != 0:
+                    H[i, j] = 0
 
-        H_maxs[counter] = np.nanmax(H)
-        counter += 1
+    return H
 
-        if (np.nanmax(((H - oldH) ** 2) ** .5)) < 0.001:
-            continue_flag = 0
-        elif counter >= max_iterations:
-            continue_flag = 0
-
-    #H_maxs = H_maxs[:counter]
-
-    return H, H_maxs, counter

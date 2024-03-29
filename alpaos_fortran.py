@@ -3,7 +3,7 @@ from numba import *
 from bwdist import bwdist
 from pysheds.grid import Grid
 from pysheds.view import Raster
-import alpaos_channel_generator.laplacian_solver as laplace_cython
+import alpaos_channel_generator.laplacian_fortran as lapl_f
 import time
 import cython
 import pickle
@@ -34,13 +34,13 @@ class AlpaosChannelCreator:
         self.initiateGrid()
         self.findBoundary(w = 10)
 
-        self.H                  = np.asarray(self.H, dtype="float64")
-        self.K                  = np.asarray(self.K, dtype="float64")
-        self.outside_neighbours = np.asarray(self.outside_neighbours, dtype="int")
-        self.chan               = self.chan.astype(np.int32)
-        self.boundary_i         = self.boundary_i.astype(np.int32)
-        self.boundary_j         = self.boundary_j.astype(np.int32)
-        self.outside_mask       = self.outside_mask.astype(np.int32)
+        self.H              = np.asfortranarray(self.H, dtype=np.float64)
+        self.K              = np.asfortranarray(self.K, dtype=np.float64)
+        self.boundary_i     = np.asfortranarray(self.boundary_i+1, dtype=int)
+        self.boundary_j     = np.asfortranarray(self.boundary_j+1, dtype=int)
+        self.chan           = np.asfortranarray(self.chan, dtype=int)
+        self.outside_mask   = np.asfortranarray(self.outside_mask, dtype=int)
+
     def save(self, pathname):
         """
         Method to save channel generator as a pickle
@@ -178,11 +178,12 @@ class AlpaosChannelCreator:
         if T == "Hmean":
             T = np.nanmean(self.H)
 
+
         es = self.calculate_ES([i, j])
         ps = np.exp(-es / T)
 
         return ps
-    def laplacianSolver(self, max_iterations=100000, min_iterations=500, tolerance=1e-7, stepsize = 10000):
+    def laplacianSolver(self, H_max_iterations=100000, min_iterations=500, tolerance=1e-6, stepsize = 10000):
 
         """
         Function to solve the laplacian equation
@@ -195,40 +196,28 @@ class AlpaosChannelCreator:
 
         while continue_flag:
             # calculate water surface
-            #self.H = laplace_cython.laplacianIteration(self.H, self.K, self.resolution)
-            #self.H = laplace_cython.applyBoundaryConditions(self.H, self.boundary_i, self.boundary_j,
-            #                                                self.outside_mask, self.chan)
-            self.H = laplace_cython.laplacianSolver(
-                          self.H,
-                                self.K,
-                                self.boundary_i,
-                                self.boundary_j,
-                                self.outside_mask,
-                                self.chan,
-                                self.resolution,
-                                tolerance,
-                                stepsize)
-            
-            self.H = np.asarray(self.H, dtype="float64")
+            lapl_f.laplaciansolver(h=self.H, k=self.K, boundary_i=self.boundary_i, boundary_j=self.boundary_j,
+                                   outside_mask=self.outside_mask, chan=self.chan, rows=self.H.shape[0],
+                                   cols=self.H.shape[1], iterations=stepsize, resolution=self.resolution)
+
             # evaluate convergence
             self.H_maxs.append(np.nanmax(self.H))
 
             self.counter += stepsize
             self.total_counter += stepsize
 
-            if self.counter >= max_iterations:
+            if self.counter >= H_max_iterations:
                 continue_flag = False
                 print("Maximum number of iterations reached.")
-            elif len(self.H_maxs) >= min_iterations:
+            elif self.counter >= min_iterations:
                 diff = np.nanmax(((self.H - self.H_prev) ** 2) ** .5)
-                print(f'Iteration: {self.counter}, Difference: {diff}', end = '\r')
                 if diff < tolerance:
                     continue_flag = False
                 else:
                     self.H_prev = self.H.copy()
 
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001,
-              max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
+              H_max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
               stepsize = 10000):
 
             print('Solving initial Poisson equation for H.')
@@ -237,13 +226,13 @@ class AlpaosChannelCreator:
 
             for iter in range(iterations):
                 time0                       = time.time()
-                self.laplacianSolver(max_iterations = max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
+                self.laplacianSolver(H_max_iterations = H_max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
                                      tolerance = tolerance*stepsize, stepsize = stepsize)
                 time1                       = time.time()
 
                 print(f"Step: {iter+1}/{iterations}")
                 if time1 - time0 > 10:
-                    print(f'Solving Poisson equation for H took {np.round((time1-time0)/60,2)} minutes to run {self.counter*stepsize} iterations.')
+                    print(f'Solving Poisson equation for H took {np.round((time1-time0)/60,2)} minutes to run {self.counter} iterations.')
 
                 if np.sum(np.isnan(self.H)) > 0:
                     raise ValueError('There are NaN values in the water surface map.')
