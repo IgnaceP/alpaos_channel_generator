@@ -2649,6 +2649,18 @@ static CYTHON_INLINE PyObject* __Pyx_PyInt_From_int(int value);
 /* CIntToPy.proto */
 static CYTHON_INLINE PyObject* __Pyx_PyInt_From_long(long value);
 
+/* CopyContentsUtility.proto */
+#define __pyx_memoryview_copy_slice_d_dc_double_c(slice)\
+        __pyx_memoryview_copy_new_contig(&slice, "c", 2,\
+                                         sizeof(double), (PyBUF_C_CONTIGUOUS | PyBUF_FORMAT),\
+                                         0)
+
+/* CopyContentsUtility.proto */
+#define __pyx_memoryview_copy_slice_dcd__double_f(slice)\
+        __pyx_memoryview_copy_new_contig(&slice, "fortran", 2,\
+                                         sizeof(double), (PyBUF_F_CONTIGUOUS | PyBUF_FORMAT),\
+                                         0)
+
 /* CIntFromPy.proto */
 static CYTHON_INLINE long __Pyx_PyInt_As_long(PyObject *);
 
@@ -2690,6 +2702,7 @@ static PyObject *__pyx_memoryviewslice_assign_item_from_object(struct __pyx_memo
 static PyObject *__pyx_memoryviewslice__get_base(struct __pyx_memoryviewslice_obj *__pyx_v_self); /* proto*/
 
 /* Module declarations from "cython.view" */
+static struct __pyx_array_obj *__pyx_array_new(PyObject *, Py_ssize_t, char *, char *, char *); /*proto*/
 
 /* Module declarations from "cython.dataclasses" */
 
@@ -17375,8 +17388,8 @@ static __Pyx_memviewslice __pyx_f_16laplacian_solver_laplacianSolver(__Pyx_memvi
  *     result = claplacianSolver(H, K, boundary_i, boundary_j, outside_mask, chan, resolution, tolerance, max_iterations)
  * 
  *     return result             # <<<<<<<<<<<<<<
+ * 
  * @cython.boundscheck(False)
- * @cython.wraparound(False)
  */
   __PYX_INC_MEMVIEW(&__pyx_v_result, 1);
   __pyx_r = __pyx_v_result;
@@ -17671,7 +17684,7 @@ static PyObject *__pyx_pf_16laplacian_solver_laplacianSolver(CYTHON_UNUSED PyObj
   return __pyx_r;
 }
 
-/* "laplacian_solver.pyx":22
+/* "laplacian_solver.pyx":23
  * @cython.boundscheck(False)
  * @cython.wraparound(False)
  * cdef double[:,:] claplacianSolver(double[:,:] H,             # <<<<<<<<<<<<<<
@@ -17679,24 +17692,23 @@ static PyObject *__pyx_pf_16laplacian_solver_laplacianSolver(CYTHON_UNUSED PyObj
  *                                   int[:,:] boundary_i,
  */
 
-static __Pyx_memviewslice __pyx_f_16laplacian_solver_claplacianSolver(__Pyx_memviewslice __pyx_v_H, __Pyx_memviewslice __pyx_v_K, __Pyx_memviewslice __pyx_v_boundary_i, __Pyx_memviewslice __pyx_v_boundary_j, __Pyx_memviewslice __pyx_v_outside_mask, __Pyx_memviewslice __pyx_v_chan, double __pyx_v_resolution, CYTHON_UNUSED double __pyx_v_tolerance, int __pyx_v_max_iterations) {
+static __Pyx_memviewslice __pyx_f_16laplacian_solver_claplacianSolver(__Pyx_memviewslice __pyx_v_H, CYTHON_UNUSED __Pyx_memviewslice __pyx_v_K, __Pyx_memviewslice __pyx_v_boundary_i, __Pyx_memviewslice __pyx_v_boundary_j, __Pyx_memviewslice __pyx_v_outside_mask, __Pyx_memviewslice __pyx_v_chan, double __pyx_v_resolution, CYTHON_UNUSED double __pyx_v_tolerance, int __pyx_v_max_iterations) {
   int __pyx_v_i;
   int __pyx_v_j;
   int __pyx_v_rows;
   int __pyx_v_cols;
   __Pyx_memviewslice __pyx_v_lap = { 0, 0, { 0 }, { 0 }, { 0 } };
-  CYTHON_UNUSED __Pyx_memviewslice __pyx_v_h = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_memviewslice __pyx_r = { 0, 0, { 0 }, { 0 }, { 0 } };
-  int __pyx_t_1;
+  __Pyx_memviewslice __pyx_t_1 = { 0, 0, { 0 }, { 0 }, { 0 } };
   int __pyx_t_2;
   int __pyx_t_3;
-  long __pyx_t_4;
+  int __pyx_t_4;
   long __pyx_t_5;
-  int __pyx_t_6;
-  long __pyx_t_7;
+  long __pyx_t_6;
+  int __pyx_t_7;
   long __pyx_t_8;
-  int __pyx_t_9;
-  Py_ssize_t __pyx_t_10;
+  long __pyx_t_9;
+  int __pyx_t_10;
   Py_ssize_t __pyx_t_11;
   Py_ssize_t __pyx_t_12;
   Py_ssize_t __pyx_t_13;
@@ -17708,18 +17720,34 @@ static __Pyx_memviewslice __pyx_f_16laplacian_solver_claplacianSolver(__Pyx_memv
   Py_ssize_t __pyx_t_19;
   Py_ssize_t __pyx_t_20;
   Py_ssize_t __pyx_t_21;
-  int __pyx_t_22;
+  Py_ssize_t __pyx_t_22;
   int __pyx_t_23;
   int __pyx_t_24;
   int __pyx_t_25;
   int __pyx_t_26;
+  int __pyx_t_27;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+
+  /* "laplacian_solver.pyx":34
+ * 
+ *     cdef int i, j, rows, cols
+ *     cdef double[:,:] lap = H.copy()             # <<<<<<<<<<<<<<
+ * 
+ *     rows = H.shape[0]
+ */
+  __pyx_t_1 = __pyx_memoryview_copy_slice_d_dc_double_c(__pyx_v_H); if (unlikely(!__pyx_t_1.memview)) __PYX_ERR(0, 34, __pyx_L1_error)
+  __pyx_v_lap = __pyx_t_1;
+  __pyx_t_1.memview = NULL;
+  __pyx_t_1.data = NULL;
 
   /* "laplacian_solver.pyx":36
- *     cdef double l
+ *     cdef double[:,:] lap = H.copy()
  * 
  *     rows = H.shape[0]             # <<<<<<<<<<<<<<
  *     cols = H.shape[1]
- *     lap  = H
+ * 
  */
   __pyx_v_rows = (__pyx_v_H.shape[0]);
 
@@ -17727,217 +17755,196 @@ static __Pyx_memviewslice __pyx_f_16laplacian_solver_claplacianSolver(__Pyx_memv
  * 
  *     rows = H.shape[0]
  *     cols = H.shape[1]             # <<<<<<<<<<<<<<
- *     lap  = H
- * 
- */
-  __pyx_v_cols = (__pyx_v_H.shape[1]);
-
-  /* "laplacian_solver.pyx":38
- *     rows = H.shape[0]
- *     cols = H.shape[1]
- *     lap  = H             # <<<<<<<<<<<<<<
  * 
  *     for i in range(max_iterations):
  */
-  __PYX_INC_MEMVIEW(&__pyx_v_H, 1);
-  __pyx_v_lap = __pyx_v_H;
+  __pyx_v_cols = (__pyx_v_H.shape[1]);
 
-  /* "laplacian_solver.pyx":40
- *     lap  = H
+  /* "laplacian_solver.pyx":39
+ *     cols = H.shape[1]
  * 
  *     for i in range(max_iterations):             # <<<<<<<<<<<<<<
  *         #laplacianIteration(H, K, resolution)
  *         #applyBoundaryConditions(H, boundary_i, boundary_j, outside_mask, chan)
  */
-  __pyx_t_1 = __pyx_v_max_iterations;
-  __pyx_t_2 = __pyx_t_1;
-  for (__pyx_t_3 = 0; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
-    __pyx_v_i = __pyx_t_3;
+  __pyx_t_2 = __pyx_v_max_iterations;
+  __pyx_t_3 = __pyx_t_2;
+  for (__pyx_t_4 = 0; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
+    __pyx_v_i = __pyx_t_4;
 
-    /* "laplacian_solver.pyx":44
+    /* "laplacian_solver.pyx":43
  *         #applyBoundaryConditions(H, boundary_i, boundary_j, outside_mask, chan)
  * 
  *         for i in range(1, rows - 1):             # <<<<<<<<<<<<<<
  *             for j in range(1, cols - 1):
- *                 lap[i,j] = (H[i - 1, j] + H[i + 1, j] + H[i, j - 1] + H[i, j + 1] - (resolution ** 2) * K[i, j]) / 4.0
+ *                 lap[i,j] = (lap[i - 1, j] + lap[i + 1, j] + lap[i, j - 1] + lap[i, j + 1] - (resolution ** 2) * lap[i, j]) / 4.0
  */
-    __pyx_t_4 = (__pyx_v_rows - 1);
-    __pyx_t_5 = __pyx_t_4;
-    for (__pyx_t_6 = 1; __pyx_t_6 < __pyx_t_5; __pyx_t_6+=1) {
-      __pyx_v_i = __pyx_t_6;
+    __pyx_t_5 = (__pyx_v_rows - 1);
+    __pyx_t_6 = __pyx_t_5;
+    for (__pyx_t_7 = 1; __pyx_t_7 < __pyx_t_6; __pyx_t_7+=1) {
+      __pyx_v_i = __pyx_t_7;
 
-      /* "laplacian_solver.pyx":45
+      /* "laplacian_solver.pyx":44
  * 
  *         for i in range(1, rows - 1):
  *             for j in range(1, cols - 1):             # <<<<<<<<<<<<<<
- *                 lap[i,j] = (H[i - 1, j] + H[i + 1, j] + H[i, j - 1] + H[i, j + 1] - (resolution ** 2) * K[i, j]) / 4.0
+ *                 lap[i,j] = (lap[i - 1, j] + lap[i + 1, j] + lap[i, j - 1] + lap[i, j + 1] - (resolution ** 2) * lap[i, j]) / 4.0
  * 
  */
-      __pyx_t_7 = (__pyx_v_cols - 1);
-      __pyx_t_8 = __pyx_t_7;
-      for (__pyx_t_9 = 1; __pyx_t_9 < __pyx_t_8; __pyx_t_9+=1) {
-        __pyx_v_j = __pyx_t_9;
+      __pyx_t_8 = (__pyx_v_cols - 1);
+      __pyx_t_9 = __pyx_t_8;
+      for (__pyx_t_10 = 1; __pyx_t_10 < __pyx_t_9; __pyx_t_10+=1) {
+        __pyx_v_j = __pyx_t_10;
 
-        /* "laplacian_solver.pyx":46
+        /* "laplacian_solver.pyx":45
  *         for i in range(1, rows - 1):
  *             for j in range(1, cols - 1):
- *                 lap[i,j] = (H[i - 1, j] + H[i + 1, j] + H[i, j - 1] + H[i, j + 1] - (resolution ** 2) * K[i, j]) / 4.0             # <<<<<<<<<<<<<<
+ *                 lap[i,j] = (lap[i - 1, j] + lap[i + 1, j] + lap[i, j - 1] + lap[i, j + 1] - (resolution ** 2) * lap[i, j]) / 4.0             # <<<<<<<<<<<<<<
  * 
- *         h = lap
+ *         for i in range(rows):
  */
-        __pyx_t_10 = (__pyx_v_i - 1);
-        __pyx_t_11 = __pyx_v_j;
-        __pyx_t_12 = (__pyx_v_i + 1);
-        __pyx_t_13 = __pyx_v_j;
-        __pyx_t_14 = __pyx_v_i;
-        __pyx_t_15 = (__pyx_v_j - 1);
-        __pyx_t_16 = __pyx_v_i;
-        __pyx_t_17 = (__pyx_v_j + 1);
-        __pyx_t_18 = __pyx_v_i;
-        __pyx_t_19 = __pyx_v_j;
-        __pyx_t_20 = __pyx_v_i;
-        __pyx_t_21 = __pyx_v_j;
-        *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_20 * __pyx_v_lap.strides[0]) ) + __pyx_t_21 * __pyx_v_lap.strides[1]) )) = ((((((*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_10 * __pyx_v_H.strides[0]) ) + __pyx_t_11 * __pyx_v_H.strides[1]) ))) + (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_12 * __pyx_v_H.strides[0]) ) + __pyx_t_13 * __pyx_v_H.strides[1]) )))) + (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_14 * __pyx_v_H.strides[0]) ) + __pyx_t_15 * __pyx_v_H.strides[1]) )))) + (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_16 * __pyx_v_H.strides[0]) ) + __pyx_t_17 * __pyx_v_H.strides[1]) )))) - (pow(__pyx_v_resolution, 2.0) * (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_K.data + __pyx_t_18 * __pyx_v_K.strides[0]) ) + __pyx_t_19 * __pyx_v_K.strides[1]) ))))) / 4.0);
+        __pyx_t_11 = (__pyx_v_i - 1);
+        __pyx_t_12 = __pyx_v_j;
+        __pyx_t_13 = (__pyx_v_i + 1);
+        __pyx_t_14 = __pyx_v_j;
+        __pyx_t_15 = __pyx_v_i;
+        __pyx_t_16 = (__pyx_v_j - 1);
+        __pyx_t_17 = __pyx_v_i;
+        __pyx_t_18 = (__pyx_v_j + 1);
+        __pyx_t_19 = __pyx_v_i;
+        __pyx_t_20 = __pyx_v_j;
+        __pyx_t_21 = __pyx_v_i;
+        __pyx_t_22 = __pyx_v_j;
+        *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_21 * __pyx_v_lap.strides[0]) ) + __pyx_t_22 * __pyx_v_lap.strides[1]) )) = ((((((*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_11 * __pyx_v_lap.strides[0]) ) + __pyx_t_12 * __pyx_v_lap.strides[1]) ))) + (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_13 * __pyx_v_lap.strides[0]) ) + __pyx_t_14 * __pyx_v_lap.strides[1]) )))) + (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_15 * __pyx_v_lap.strides[0]) ) + __pyx_t_16 * __pyx_v_lap.strides[1]) )))) + (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_17 * __pyx_v_lap.strides[0]) ) + __pyx_t_18 * __pyx_v_lap.strides[1]) )))) - (pow(__pyx_v_resolution, 2.0) * (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_19 * __pyx_v_lap.strides[0]) ) + __pyx_t_20 * __pyx_v_lap.strides[1]) ))))) / 4.0);
       }
     }
 
-    /* "laplacian_solver.pyx":48
- *                 lap[i,j] = (H[i - 1, j] + H[i + 1, j] + H[i, j - 1] + H[i, j + 1] - (resolution ** 2) * K[i, j]) / 4.0
- * 
- *         h = lap             # <<<<<<<<<<<<<<
- * 
- *         for i in range(rows):
- */
-    __PYX_XCLEAR_MEMVIEW(&__pyx_v_h, 1);
-    __PYX_INC_MEMVIEW(&__pyx_v_lap, 1);
-    __pyx_v_h = __pyx_v_lap;
-
-    /* "laplacian_solver.pyx":50
- *         h = lap
+    /* "laplacian_solver.pyx":47
+ *                 lap[i,j] = (lap[i - 1, j] + lap[i + 1, j] + lap[i, j - 1] + lap[i, j + 1] - (resolution ** 2) * lap[i, j]) / 4.0
  * 
  *         for i in range(rows):             # <<<<<<<<<<<<<<
  *             for j in range(cols):
- *                 if H[boundary_i[i, j], boundary_j[i, j]] > 0:
+ *                 if lap[boundary_i[i, j], boundary_j[i, j]] > 0:
  */
-    __pyx_t_6 = __pyx_v_rows;
-    __pyx_t_9 = __pyx_t_6;
-    for (__pyx_t_22 = 0; __pyx_t_22 < __pyx_t_9; __pyx_t_22+=1) {
-      __pyx_v_i = __pyx_t_22;
+    __pyx_t_7 = __pyx_v_rows;
+    __pyx_t_10 = __pyx_t_7;
+    for (__pyx_t_23 = 0; __pyx_t_23 < __pyx_t_10; __pyx_t_23+=1) {
+      __pyx_v_i = __pyx_t_23;
 
-      /* "laplacian_solver.pyx":51
+      /* "laplacian_solver.pyx":48
  * 
  *         for i in range(rows):
  *             for j in range(cols):             # <<<<<<<<<<<<<<
- *                 if H[boundary_i[i, j], boundary_j[i, j]] > 0:
- *                     H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
+ *                 if lap[boundary_i[i, j], boundary_j[i, j]] > 0:
+ *                     lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]
  */
-      __pyx_t_23 = __pyx_v_cols;
-      __pyx_t_24 = __pyx_t_23;
-      for (__pyx_t_25 = 0; __pyx_t_25 < __pyx_t_24; __pyx_t_25+=1) {
-        __pyx_v_j = __pyx_t_25;
+      __pyx_t_24 = __pyx_v_cols;
+      __pyx_t_25 = __pyx_t_24;
+      for (__pyx_t_26 = 0; __pyx_t_26 < __pyx_t_25; __pyx_t_26+=1) {
+        __pyx_v_j = __pyx_t_26;
 
-        /* "laplacian_solver.pyx":52
+        /* "laplacian_solver.pyx":49
  *         for i in range(rows):
  *             for j in range(cols):
- *                 if H[boundary_i[i, j], boundary_j[i, j]] > 0:             # <<<<<<<<<<<<<<
- *                     H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
+ *                 if lap[boundary_i[i, j], boundary_j[i, j]] > 0:             # <<<<<<<<<<<<<<
+ *                     lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]
  * 
  */
-        __pyx_t_19 = __pyx_v_i;
-        __pyx_t_18 = __pyx_v_j;
-        __pyx_t_17 = __pyx_v_i;
-        __pyx_t_16 = __pyx_v_j;
-        __pyx_t_15 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_i.data + __pyx_t_19 * __pyx_v_boundary_i.strides[0]) ) + __pyx_t_18 * __pyx_v_boundary_i.strides[1]) )));
-        __pyx_t_14 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_j.data + __pyx_t_17 * __pyx_v_boundary_j.strides[0]) ) + __pyx_t_16 * __pyx_v_boundary_j.strides[1]) )));
-        __pyx_t_26 = ((*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_15 * __pyx_v_H.strides[0]) ) + __pyx_t_14 * __pyx_v_H.strides[1]) ))) > 0.0);
-        if (__pyx_t_26) {
+        __pyx_t_20 = __pyx_v_i;
+        __pyx_t_19 = __pyx_v_j;
+        __pyx_t_18 = __pyx_v_i;
+        __pyx_t_17 = __pyx_v_j;
+        __pyx_t_16 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_i.data + __pyx_t_20 * __pyx_v_boundary_i.strides[0]) ) + __pyx_t_19 * __pyx_v_boundary_i.strides[1]) )));
+        __pyx_t_15 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_j.data + __pyx_t_18 * __pyx_v_boundary_j.strides[0]) ) + __pyx_t_17 * __pyx_v_boundary_j.strides[1]) )));
+        __pyx_t_27 = ((*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_16 * __pyx_v_lap.strides[0]) ) + __pyx_t_15 * __pyx_v_lap.strides[1]) ))) > 0.0);
+        if (__pyx_t_27) {
 
-          /* "laplacian_solver.pyx":53
+          /* "laplacian_solver.pyx":50
  *             for j in range(cols):
- *                 if H[boundary_i[i, j], boundary_j[i, j]] > 0:
- *                     H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]             # <<<<<<<<<<<<<<
+ *                 if lap[boundary_i[i, j], boundary_j[i, j]] > 0:
+ *                     lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]             # <<<<<<<<<<<<<<
  * 
  *                 if chan[i, j] != 0:
  */
-          __pyx_t_16 = __pyx_v_i;
-          __pyx_t_17 = __pyx_v_j;
-          __pyx_t_18 = __pyx_v_i;
-          __pyx_t_19 = __pyx_v_j;
-          __pyx_t_14 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_i.data + __pyx_t_16 * __pyx_v_boundary_i.strides[0]) ) + __pyx_t_17 * __pyx_v_boundary_i.strides[1]) )));
-          __pyx_t_15 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_j.data + __pyx_t_18 * __pyx_v_boundary_j.strides[0]) ) + __pyx_t_19 * __pyx_v_boundary_j.strides[1]) )));
-          __pyx_t_13 = __pyx_v_i;
-          __pyx_t_12 = __pyx_v_j;
-          *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_13 * __pyx_v_H.strides[0]) ) + __pyx_t_12 * __pyx_v_H.strides[1]) )) = (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_14 * __pyx_v_H.strides[0]) ) + __pyx_t_15 * __pyx_v_H.strides[1]) )));
+          __pyx_t_17 = __pyx_v_i;
+          __pyx_t_18 = __pyx_v_j;
+          __pyx_t_19 = __pyx_v_i;
+          __pyx_t_20 = __pyx_v_j;
+          __pyx_t_15 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_i.data + __pyx_t_17 * __pyx_v_boundary_i.strides[0]) ) + __pyx_t_18 * __pyx_v_boundary_i.strides[1]) )));
+          __pyx_t_16 = (*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_boundary_j.data + __pyx_t_19 * __pyx_v_boundary_j.strides[0]) ) + __pyx_t_20 * __pyx_v_boundary_j.strides[1]) )));
+          __pyx_t_14 = __pyx_v_i;
+          __pyx_t_13 = __pyx_v_j;
+          *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_14 * __pyx_v_lap.strides[0]) ) + __pyx_t_13 * __pyx_v_lap.strides[1]) )) = (*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_15 * __pyx_v_lap.strides[0]) ) + __pyx_t_16 * __pyx_v_lap.strides[1]) )));
 
-          /* "laplacian_solver.pyx":52
+          /* "laplacian_solver.pyx":49
  *         for i in range(rows):
  *             for j in range(cols):
- *                 if H[boundary_i[i, j], boundary_j[i, j]] > 0:             # <<<<<<<<<<<<<<
- *                     H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
+ *                 if lap[boundary_i[i, j], boundary_j[i, j]] > 0:             # <<<<<<<<<<<<<<
+ *                     lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]
+ * 
+ */
+        }
+
+        /* "laplacian_solver.pyx":52
+ *                     lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]
+ * 
+ *                 if chan[i, j] != 0:             # <<<<<<<<<<<<<<
+ *                     lap[i, j] = 0
+ * 
+ */
+        __pyx_t_20 = __pyx_v_i;
+        __pyx_t_19 = __pyx_v_j;
+        __pyx_t_27 = ((*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_chan.data + __pyx_t_20 * __pyx_v_chan.strides[0]) ) + __pyx_t_19 * __pyx_v_chan.strides[1]) ))) != 0);
+        if (__pyx_t_27) {
+
+          /* "laplacian_solver.pyx":53
+ * 
+ *                 if chan[i, j] != 0:
+ *                     lap[i, j] = 0             # <<<<<<<<<<<<<<
+ * 
+ *                 if outside_mask[i, j] != 0:
+ */
+          __pyx_t_19 = __pyx_v_i;
+          __pyx_t_20 = __pyx_v_j;
+          *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_19 * __pyx_v_lap.strides[0]) ) + __pyx_t_20 * __pyx_v_lap.strides[1]) )) = 0.0;
+
+          /* "laplacian_solver.pyx":52
+ *                     lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]
+ * 
+ *                 if chan[i, j] != 0:             # <<<<<<<<<<<<<<
+ *                     lap[i, j] = 0
  * 
  */
         }
 
         /* "laplacian_solver.pyx":55
- *                     H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
+ *                     lap[i, j] = 0
  * 
- *                 if chan[i, j] != 0:             # <<<<<<<<<<<<<<
- *                     H[i, j] = 0
+ *                 if outside_mask[i, j] != 0:             # <<<<<<<<<<<<<<
+ *                     lap[i, j] = 0
  * 
  */
-        __pyx_t_19 = __pyx_v_i;
-        __pyx_t_18 = __pyx_v_j;
-        __pyx_t_26 = ((*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_chan.data + __pyx_t_19 * __pyx_v_chan.strides[0]) ) + __pyx_t_18 * __pyx_v_chan.strides[1]) ))) != 0);
-        if (__pyx_t_26) {
+        __pyx_t_20 = __pyx_v_i;
+        __pyx_t_19 = __pyx_v_j;
+        __pyx_t_27 = ((*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_outside_mask.data + __pyx_t_20 * __pyx_v_outside_mask.strides[0]) ) + __pyx_t_19 * __pyx_v_outside_mask.strides[1]) ))) != 0);
+        if (__pyx_t_27) {
 
           /* "laplacian_solver.pyx":56
  * 
- *                 if chan[i, j] != 0:
- *                     H[i, j] = 0             # <<<<<<<<<<<<<<
- * 
  *                 if outside_mask[i, j] != 0:
+ *                     lap[i, j] = 0             # <<<<<<<<<<<<<<
+ * 
+ *     return lap
  */
-          __pyx_t_18 = __pyx_v_i;
-          __pyx_t_19 = __pyx_v_j;
-          *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_18 * __pyx_v_H.strides[0]) ) + __pyx_t_19 * __pyx_v_H.strides[1]) )) = 0.0;
+          __pyx_t_19 = __pyx_v_i;
+          __pyx_t_20 = __pyx_v_j;
+          *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_lap.data + __pyx_t_19 * __pyx_v_lap.strides[0]) ) + __pyx_t_20 * __pyx_v_lap.strides[1]) )) = 0.0;
 
           /* "laplacian_solver.pyx":55
- *                     H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
- * 
- *                 if chan[i, j] != 0:             # <<<<<<<<<<<<<<
- *                     H[i, j] = 0
- * 
- */
-        }
-
-        /* "laplacian_solver.pyx":58
- *                     H[i, j] = 0
+ *                     lap[i, j] = 0
  * 
  *                 if outside_mask[i, j] != 0:             # <<<<<<<<<<<<<<
- *                     H[i, j] = 0
- * 
- */
-        __pyx_t_19 = __pyx_v_i;
-        __pyx_t_18 = __pyx_v_j;
-        __pyx_t_26 = ((*((int *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_outside_mask.data + __pyx_t_19 * __pyx_v_outside_mask.strides[0]) ) + __pyx_t_18 * __pyx_v_outside_mask.strides[1]) ))) != 0);
-        if (__pyx_t_26) {
-
-          /* "laplacian_solver.pyx":59
- * 
- *                 if outside_mask[i, j] != 0:
- *                     H[i, j] = 0             # <<<<<<<<<<<<<<
- * 
- *     return H
- */
-          __pyx_t_18 = __pyx_v_i;
-          __pyx_t_19 = __pyx_v_j;
-          *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_H.data + __pyx_t_18 * __pyx_v_H.strides[0]) ) + __pyx_t_19 * __pyx_v_H.strides[1]) )) = 0.0;
-
-          /* "laplacian_solver.pyx":58
- *                     H[i, j] = 0
- * 
- *                 if outside_mask[i, j] != 0:             # <<<<<<<<<<<<<<
- *                     H[i, j] = 0
+ *                     lap[i, j] = 0
  * 
  */
         }
@@ -17945,17 +17952,17 @@ static __Pyx_memviewslice __pyx_f_16laplacian_solver_claplacianSolver(__Pyx_memv
     }
   }
 
-  /* "laplacian_solver.pyx":61
- *                     H[i, j] = 0
+  /* "laplacian_solver.pyx":58
+ *                     lap[i, j] = 0
  * 
- *     return H             # <<<<<<<<<<<<<<
+ *     return lap             # <<<<<<<<<<<<<<
  * 
  */
-  __PYX_INC_MEMVIEW(&__pyx_v_H, 1);
-  __pyx_r = __pyx_v_H;
+  __PYX_INC_MEMVIEW(&__pyx_v_lap, 1);
+  __pyx_r = __pyx_v_lap;
   goto __pyx_L0;
 
-  /* "laplacian_solver.pyx":22
+  /* "laplacian_solver.pyx":23
  * @cython.boundscheck(False)
  * @cython.wraparound(False)
  * cdef double[:,:] claplacianSolver(double[:,:] H,             # <<<<<<<<<<<<<<
@@ -17964,12 +17971,18 @@ static __Pyx_memviewslice __pyx_f_16laplacian_solver_claplacianSolver(__Pyx_memv
  */
 
   /* function exit code */
+  __pyx_L1_error:;
+  __PYX_XCLEAR_MEMVIEW(&__pyx_t_1, 1);
+  __pyx_r.data = NULL;
+  __pyx_r.memview = NULL;
+  __Pyx_AddTraceback("laplacian_solver.claplacianSolver", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  goto __pyx_L2;
   __pyx_L0:;
   if (unlikely(!__pyx_r.memview)) {
     PyErr_SetString(PyExc_TypeError, "Memoryview return value is not initialized");
   }
+  __pyx_L2:;
   __PYX_XCLEAR_MEMVIEW(&__pyx_v_lap, 1);
-  __PYX_XCLEAR_MEMVIEW(&__pyx_v_h, 1);
   return __pyx_r;
 }
 static struct __pyx_vtabstruct_array __pyx_vtable_array;
@@ -19070,7 +19083,7 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
 }
 /* #### Code section: cached_builtins ### */
 static CYTHON_SMALL_CODE int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 40, __pyx_L1_error)
+  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 39, __pyx_L1_error)
   __pyx_builtin___import__ = __Pyx_GetBuiltinName(__pyx_n_s_import); if (!__pyx_builtin___import__) __PYX_ERR(1, 100, __pyx_L1_error)
   __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(1, 141, __pyx_L1_error)
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) __PYX_ERR(1, 156, __pyx_L1_error)

@@ -31,12 +31,10 @@ cdef double[:,:] claplacianSolver(double[:,:] H,
                                   int max_iterations):
 
     cdef int i, j, rows, cols
-    cdef double[:,:] lap
-    cdef double l
+    cdef double[:,:] lap = H.copy()
 
     rows = H.shape[0]
     cols = H.shape[1]
-    lap  = H
 
     for i in range(max_iterations):
         #laplacianIteration(H, K, resolution)
@@ -44,20 +42,18 @@ cdef double[:,:] claplacianSolver(double[:,:] H,
 
         for i in range(1, rows - 1):
             for j in range(1, cols - 1):
-                lap[i,j] = (H[i - 1, j] + H[i + 1, j] + H[i, j - 1] + H[i, j + 1] - (resolution ** 2) * K[i, j]) / 4.0
-
-        h = lap
+                lap[i,j] = (lap[i - 1, j] + lap[i + 1, j] + lap[i, j - 1] + lap[i, j + 1] - (resolution ** 2) * lap[i, j]) / 4.0
 
         for i in range(rows):
             for j in range(cols):
-                if H[boundary_i[i, j], boundary_j[i, j]] > 0:
-                    H[i, j] = H[boundary_i[i, j], boundary_j[i, j]]
+                if lap[boundary_i[i, j], boundary_j[i, j]] > 0:
+                    lap[i, j] = lap[boundary_i[i, j], boundary_j[i, j]]
 
                 if chan[i, j] != 0:
-                    H[i, j] = 0
+                    lap[i, j] = 0
 
                 if outside_mask[i, j] != 0:
-                    H[i, j] = 0
+                    lap[i, j] = 0
 
-    return H
+    return lap
 

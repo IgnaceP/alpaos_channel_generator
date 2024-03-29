@@ -3,12 +3,14 @@ from numba import *
 from bwdist import bwdist
 from pysheds.grid import Grid
 from pysheds.view import Raster
-import alpaos_channel_generator.laplacian_fortran as lapl_f
 import time
 import cython
 import pickle
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+import alpaos_channel_generator.laplacian_fortran as lapl_f
+from alpaos_channel_generator.inject_interpolate import inject, expand
 
 class AlpaosChannelCreator:
     def __init__(self, Hstart, K, chan, domain, H0, Z, resolution, fn_tif = 'test.tif'):
@@ -30,14 +32,14 @@ class AlpaosChannelCreator:
         self.chan_original  = self.chan.copy()
         
         self.outsideNeighbours()
-        self.initiateBoundaryConditions()
+        self.boundary_i, self.boundary_j = self.initiateBoundaryConditions(self.domain)
         self.initiateGrid()
         self.findBoundary(w = 10)
 
         self.H              = np.asfortranarray(self.H, dtype=np.float64)
         self.K              = np.asfortranarray(self.K, dtype=np.float64)
-        self.boundary_i     = np.asfortranarray(self.boundary_i+1, dtype=int)
-        self.boundary_j     = np.asfortranarray(self.boundary_j+1, dtype=int)
+        self.boundary_i     = np.asfortranarray(self.boundary_i, dtype=int)
+        self.boundary_j     = np.asfortranarray(self.boundary_j, dtype=int)
         self.chan           = np.asfortranarray(self.chan, dtype=int)
         self.outside_mask   = np.asfortranarray(self.outside_mask, dtype=int)
 
@@ -76,20 +78,23 @@ class AlpaosChannelCreator:
         self.outside_neighbours = np.asarray(outside_neighbours, dtype = "int")
         self.outside_neighbours[self.outside_neighbours > 3] = 3
 
-    def initiateBoundaryConditions(self):
+    @staticmethod
+    def initiateBoundaryConditions(domain):
         """
         Function to initiate the boundary conditions
         :return:
         """
-        outside_mask = (self.domain == 0)
+        outside_mask = (domain == 0)
         outside_mask_dist = bwdist(outside_mask)
 
         boundary = ((outside_mask_dist < 2) & (outside_mask_dist > 0))
         innerboundary = (outside_mask_dist < 3) & (outside_mask_dist > 1.5)
 
         innerboundary_dist_ij = bwdist(innerboundary, return_indices=True, return_distances=False)
-        self.boundary_i = innerboundary_dist_ij[0] * boundary
-        self.boundary_j = innerboundary_dist_ij[1] * boundary
+        boundary_i = innerboundary_dist_ij[0] * boundary
+        boundary_j = innerboundary_dist_ij[1] * boundary
+
+        return boundary_i, boundary_j
 
     def initiateGrid(self):
         """
@@ -183,6 +188,38 @@ class AlpaosChannelCreator:
         ps = np.exp(-es / T)
 
         return ps
+
+    def agg(self, agg_level=2, iterations=1e6):
+
+        print('Agreggating over level %i ...' % agg_level, end = '\r')
+
+        t0 = time.time()
+        H2 = inject(self.H, agg_level)
+        K2 = inject(self.K, agg_level)
+        domain2 = inject(self.domain, agg_level, method='min')
+        domain2[0, :] = 0;
+        domain2[:, -1] = 0;
+        domain2[-1, :] = 0;
+        domain2[:, 0] = 0
+        bi2, bj2 = self.initiateBoundaryConditions(domain2)
+        om2 = np.logical_not(domain2)
+        ch2 = inject(self.chan, agg_level)
+        rows2, cols2 = H2.shape
+        res2 = self.resolution * agg_level
+
+        # calculate water surface at lower resolution
+        lapl_f.laplaciansolver(h=H2, k=K2, boundary_i=bi2, boundary_j=bj2,
+                               outside_mask=om2, chan=ch2, rows=rows2, cols=cols2,
+                               iterations=iterations, resolution=res2)
+
+        # expand to original resolution and set to alpaos object
+        self.H = np.asfortranarray(expand(H2, agg_level))
+        self.H[self.H[self.boundary_i, self.boundary_j] > 0] = self.H[self.boundary_i, self.boundary_j][
+            self.H[self.boundary_i, self.boundary_j] > 0]
+
+        t1 = time.time()
+        print('Agreggating over level %i took %.2f minutes.' % (agg_level, (t1-t0)/60))
+
     def laplacianSolver(self, H_max_iterations=100000, min_iterations=500, tolerance=1e-6, stepsize = 10000):
 
         """
@@ -211,6 +248,7 @@ class AlpaosChannelCreator:
                 print("Maximum number of iterations reached.")
             elif self.counter >= min_iterations:
                 diff = np.nanmax(((self.H - self.H_prev) ** 2) ** .5)
+                print(f'Step {self.counter//stepsize} | iteration {self.counter} | diff: {np.round(diff,4)}',end = '\r')
                 if diff < tolerance:
                     continue_flag = False
                 else:
@@ -218,13 +256,18 @@ class AlpaosChannelCreator:
 
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001,
               H_max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
-              stepsize = 10000):
+              stepsize = 10000, agg_levels = [8,4,2]):
 
             print('Solving initial Poisson equation for H.')
 
             self.catch                          = np.zeros_like(self.chan)
 
             for iter in range(iterations):
+
+                if agg_levels:
+                    for agg_level in agg_levels:
+                        self.agg(agg_level = agg_level, iterations = 150000)
+
                 time0                       = time.time()
                 self.laplacianSolver(H_max_iterations = H_max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
                                      tolerance = tolerance*stepsize, stepsize = stepsize)

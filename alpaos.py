@@ -30,7 +30,7 @@ class AlpaosChannelCreator:
         self.chan_original  = self.chan.copy()
         
         self.outsideNeighbours()
-        self.initiateBoundaryConditions()
+        self.boundary_i, self.boundary_j = self.initiateBoundaryConditions(self.domain)
         self.initiateGrid()
         self.findBoundary(w = 10)
 
@@ -76,20 +76,24 @@ class AlpaosChannelCreator:
         self.outside_neighbours = np.asarray(outside_neighbours, dtype = "int")
         self.outside_neighbours[self.outside_neighbours > 3] = 3
 
-    def initiateBoundaryConditions(self):
+    @staticmethod
+    def initiateBoundaryConditions(domain):
         """
         Function to initiate the boundary conditions
         :return:
         """
-        outside_mask = (self.domain == 0)
+        outside_mask = (domain == 0)
         outside_mask_dist = bwdist(outside_mask)
 
         boundary = ((outside_mask_dist < 2) & (outside_mask_dist > 0))
         innerboundary = (outside_mask_dist < 3) & (outside_mask_dist > 1.5)
 
         innerboundary_dist_ij = bwdist(innerboundary, return_indices=True, return_distances=False)
-        self.boundary_i = innerboundary_dist_ij[0] * boundary
-        self.boundary_j = innerboundary_dist_ij[1] * boundary
+        boundary_i = innerboundary_dist_ij[0] * boundary
+        boundary_j = innerboundary_dist_ij[1] * boundary
+
+        return boundary_i, boundary_j
+
 
     def initiateGrid(self):
         """
@@ -182,7 +186,7 @@ class AlpaosChannelCreator:
         ps = np.exp(-es / T)
 
         return ps
-    def laplacianSolver(self, max_iterations=100000, min_iterations=500, tolerance=1e-7, stepsize = 10000):
+    def laplacianSolver(self, H_max_iterations=100000, min_iterations=500, tolerance=1e-7, stepsize = 10000):
 
         """
         Function to solve the laplacian equation
@@ -208,27 +212,31 @@ class AlpaosChannelCreator:
                                 self.resolution,
                                 tolerance,
                                 stepsize)
-            
+
             self.H = np.asarray(self.H, dtype="float64")
+
             # evaluate convergence
             self.H_maxs.append(np.nanmax(self.H))
 
             self.counter += stepsize
             self.total_counter += stepsize
 
-            if self.counter >= max_iterations:
+            if self.counter >= H_max_iterations:
                 continue_flag = False
                 print("Maximum number of iterations reached.")
-            elif len(self.H_maxs) >= min_iterations:
+            elif self.counter >= min_iterations:
                 diff = np.nanmax(((self.H - self.H_prev) ** 2) ** .5)
-                print(f'Iteration: {self.counter}, Difference: {diff}', end = '\r')
+                print(
+                    f'Step {self.counter // stepsize} | iteration {self.counter} | diff: {np.round(diff, 4)}',end = '\r')
                 if diff < tolerance:
                     continue_flag = False
                 else:
                     self.H_prev = self.H.copy()
 
+
+
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001,
-              max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
+              H_max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
               stepsize = 10000):
 
             print('Solving initial Poisson equation for H.')
@@ -237,13 +245,13 @@ class AlpaosChannelCreator:
 
             for iter in range(iterations):
                 time0                       = time.time()
-                self.laplacianSolver(max_iterations = max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
+                self.laplacianSolver(H_max_iterations = H_max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
                                      tolerance = tolerance*stepsize, stepsize = stepsize)
                 time1                       = time.time()
 
                 print(f"Step: {iter+1}/{iterations}")
                 if time1 - time0 > 10:
-                    print(f'Solving Poisson equation for H took {np.round((time1-time0)/60,2)} minutes to run {self.counter*stepsize} iterations.')
+                    print(f'Solving Poisson equation for H took {np.round((time1-time0)/60,2)} minutes to run {self.counter} iterations.')
 
                 if np.sum(np.isnan(self.H)) > 0:
                     raise ValueError('There are NaN values in the water surface map.')

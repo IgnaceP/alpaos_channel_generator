@@ -21,7 +21,6 @@ subroutine laplaciansolver(h, k, boundary_i, boundary_j, outside_mask, chan, row
     h_old = 0.0
 
     do iter = 1, iterations
-        
         h_old = h
         
         do i = 2, rows - 1
@@ -32,8 +31,8 @@ subroutine laplaciansolver(h, k, boundary_i, boundary_j, outside_mask, chan, row
         
         do i = 1, rows
             do j = 1, cols
-                if (h(boundary_i(i, j), boundary_j(i, j)) > 0) then
-                    h(i, j) = h(boundary_i(i, j), boundary_j(i, j))
+                if (h(boundary_i(i, j)+1, boundary_j(i, j)+1) > 0) then
+                    h(i, j) = h(boundary_i(i, j)+1, boundary_j(i, j)+1)
                 end if
 
                 if (chan(i, j) /= 0) then
