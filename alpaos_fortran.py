@@ -9,6 +9,8 @@ import pickle
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from scipy.ndimage import binary_dilation, binary_erosion
+
 import alpaos_channel_generator.laplacian_fortran as lapl_f
 from alpaos_channel_generator.inject_interpolate import inject, expand
 
@@ -189,36 +191,71 @@ class AlpaosChannelCreator:
 
         return ps
 
-    def agg(self, agg_level=2, iterations=1e6):
+    def agg(self, agg_level=2, stepsize = 1000, tolerance = 1e-6):
+        """
+        Method to decrease resolution and solve the laplacian equation
+        :param agg_level: 
+        :param iterations: 
+        :return: 
+        """
+
+        if not agg_level in [1,2,4,8,16,32,64]:
+            raise ValueError('Aggregation level should be a power of 2.')
+
+        if self.H.shape[0] % agg_level != 0 or self.H.shape[1] % agg_level != 0:
+            raise ValueError('Dimensions of input rasters should be divisible by the aggregation level.')
 
         print('Agreggating over level %i ...' % agg_level, end = '\r')
 
         t0 = time.time()
-        H2 = inject(self.H, agg_level)
-        K2 = inject(self.K, agg_level)
-        domain2 = inject(self.domain, agg_level, method='min')
-        domain2[0, :] = 0;
-        domain2[:, -1] = 0;
-        domain2[-1, :] = 0;
-        domain2[:, 0] = 0
-        bi2, bj2 = self.initiateBoundaryConditions(domain2)
-        om2 = np.logical_not(domain2)
-        ch2 = inject(self.chan, agg_level)
-        rows2, cols2 = H2.shape
-        res2 = self.resolution * agg_level
+        H_agg = inject(self.H, agg_level)
+        K_agg = inject(self.K, agg_level)
 
-        # calculate water surface at lower resolution
-        lapl_f.laplaciansolver(h=H2, k=K2, boundary_i=bi2, boundary_j=bj2,
-                               outside_mask=om2, chan=ch2, rows=rows2, cols=cols2,
-                               iterations=iterations, resolution=res2)
+        domain_agg = inject(self.domain, agg_level, method='max')
+        if np.log2(agg_level)-1 > 0:
+            domain_agg = binary_dilation(domain_agg, iterations=int(np.log2(agg_level)))
+        domain_agg[0, :] = 0;
+        domain_agg[:, -1] = 0;
+        domain_agg[-1, :] = 0;
+        domain_agg[:, 0] = 0
+        bi_agg, bj_agg = self.initiateBoundaryConditions(domain_agg)
+        om_agg = np.logical_not(domain_agg)
+        ch_2 = inject(self.chan, agg_level, method = 'max')
+        rows_agg, cols_agg = H_agg.shape
+        res_agg = self.resolution * agg_level
+
+
+        # ------------------------------------------------------------------------------------------------------------ #
+        # Solve the laplacian equation
+
+        H_agg_prev = np.zeros_like(H_agg)
+
+        t = 0
+        self.H_agg_box = H_agg.copy()
+        while np.quantile(np.abs(-H_agg + H_agg_prev),.99) > tolerance:
+
+            H_agg_prev = H_agg.copy()
+
+            # calculate water surface at aggregated resolution
+            lapl_f.laplaciansolver(h=H_agg, k=K_agg, boundary_i=bi_agg, boundary_j=bj_agg,
+                                   outside_mask=om_agg, chan=ch_2, rows=rows_agg, cols=cols_agg,
+                                   iterations=stepsize, resolution=res_agg)
+
+            t += stepsize
+            self.H_agg_box = np.dstack([self.H_agg_box, H_agg])
+
+        self.H_agg_prev = H_agg_prev
+        self.H_agg = H_agg
+        self.diff_agg = np.quantile(np.abs(-H_agg + H_agg_prev),.99)
+        # ------------------------------------------------------------------------------------------------------------ #
 
         # expand to original resolution and set to alpaos object
-        self.H = np.asfortranarray(expand(H2, agg_level))
+        self.H = np.asfortranarray(expand(H_agg, agg_level))
         self.H[self.H[self.boundary_i, self.boundary_j] > 0] = self.H[self.boundary_i, self.boundary_j][
             self.H[self.boundary_i, self.boundary_j] > 0]
 
         t1 = time.time()
-        print('Agreggating over level %i took %.2f minutes.' % (agg_level, (t1-t0)/60))
+        print('Agreggating over level %i took %i iterations over %.0f seconds.' % (agg_level, t, (t1-t0)))
 
     def laplacianSolver(self, H_max_iterations=100000, min_iterations=500, tolerance=1e-6, stepsize = 10000):
 
@@ -226,8 +263,7 @@ class AlpaosChannelCreator:
         Function to solve the laplacian equation
         """
 
-        self.H_prev             = np.zeros_like(self.H)
-
+        self.H_prev             = self.H.copy()
         continue_flag           = True
         self.counter            = 0
 
@@ -247,8 +283,7 @@ class AlpaosChannelCreator:
                 continue_flag = False
                 print("Maximum number of iterations reached.")
             elif self.counter >= min_iterations:
-                diff = np.nanmax(((self.H - self.H_prev) ** 2) ** .5)
-                print(f'Step {self.counter//stepsize} | iteration {self.counter} | diff: {np.round(diff,4)}',end = '\r')
+                diff = np.quantile(-self.H + self.H_prev,.99)
                 if diff < tolerance:
                     continue_flag = False
                 else:
@@ -256,26 +291,25 @@ class AlpaosChannelCreator:
 
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001,
               H_max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
-              stepsize = 10000, agg_levels = [8,4,2]):
+              stepsize = 1000, agg_levels = [8,4,2]):
 
-            print('Solving initial Poisson equation for H.')
-
+            self.tau_crit                       = tau_crit
             self.catch                          = np.zeros_like(self.chan)
 
             for iter in range(iterations):
 
+                print(f"Step: {iter+1}/{iterations}")
+
                 if agg_levels:
                     for agg_level in agg_levels:
-                        self.agg(agg_level = agg_level, iterations = 150000)
+                        self.agg(agg_level = agg_level, stepsize = 100, tolerance = tolerance*stepsize)
 
-                time0                       = time.time()
+                print("Solving Poisson equation ...", end='\r')
+                time0 = time.time()
                 self.laplacianSolver(H_max_iterations = H_max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
                                      tolerance = tolerance*stepsize, stepsize = stepsize)
-                time1                       = time.time()
-
-                print(f"Step: {iter+1}/{iterations}")
-                if time1 - time0 > 10:
-                    print(f'Solving Poisson equation for H took {np.round((time1-time0)/60,2)} minutes to run {self.counter} iterations.')
+                time1 = time.time()
+                print(f'Solving Poisson equation took {self.counter} iterations over {int(time1-time0)} seconds.')
 
                 if np.sum(np.isnan(self.H)) > 0:
                     raise ValueError('There are NaN values in the water surface map.')
@@ -298,7 +332,9 @@ class AlpaosChannelCreator:
                 exceedance_ij_sorted                            = np.argsort(exceedance_flat)[::-1]
                 n_exceedances                                   = len(exceedance_ij_sorted)
 
+                # select sites where the creeks will expand
                 t = 0
+                new_n = 0
                 while n_exceedances > 0:
                     R                       = np.random.rand()
                     i,j = exceedance_i[exceedance_ij_sorted[t]], exceedance_j[exceedance_ij_sorted[t]]
@@ -314,17 +350,39 @@ class AlpaosChannelCreator:
                         new_chan = False
 
                     if new_chan:
-                        print(f'took the the {t+1}th of {n_exceedances} candidates.')
+                        print(f'Took the the {t+1}th of {n_exceedances} candidates: i = {i}, j = {j}')
 
+                        # set new channel cell
                         self.chan[i,j] = 1
                         self.newchan[i,j] = 1
+
+                        # calculate watershed for new channel cell
                         catch = float(np.sum(self.watershed([i, j]))) * self.resolution ** 2
+                        # based on catchment area, set channel dimensions
                         area = 10 ** (-1.38) * (catch) ** 0.58
                         B = (area * .33 ** -1) ** .5
                         D = np.min([area / B, 10])
                         self.Z[i,j] = self.Z_orig[i,j] - D
-                        break
 
+                        # in one iterations, only distant channels can expand
+                        dist_ij = (exceedance_ij_sorted-i)**2 + (exceedance_ij_sorted-j)**2
+                        distant_channels_mask = (dist_ij > 10)
+
+                        if np.sum(distant_channels_mask) > 0:
+                            exceedance_ij_sorted = exceedance_ij_sorted[distant_channels_mask]
+                            t += 1
+                            if t == len(exceedance_ij_sorted):
+                                break
+                        else:
+                            break
+
+                        # update counters
+                        new_n += 1
+
+                        new_chan = False
+
+                        if new_n == 3:
+                            break
 
                 # calculate watershed for all new channel cells
                 new_chan_i, new_chan_j = np.where(self.newchan == 1)
@@ -339,7 +397,7 @@ class AlpaosChannelCreator:
                     for bi in range(Bi):
                         self.chan[i-bi:i+bi, j-bi:j+bi] = 1
                         self.Z[i-bi:i+bi, j-bi:j+bi] = self.Z_orig[i-bi:i+bi, j-bi:j+bi] - D
-                    print(' Recalculating channel dimensions: %.2f %%' % (100*(counter+1)/len(new_chan_i)), end = '\r')
+                    print('Recalculating channel dimensions: %.2f %%' % (100*(counter+1)/len(new_chan_i)), end = '\r')
                 print('\n')
 
 
@@ -361,7 +419,7 @@ class AlpaosChannelCreator:
 
         imH     = ax[0].imshow(self.H, cmap='viridis')
         contH   = ax[0].contour(self.H, levels=10, colors='white', linewidths=0.25, alpha = .5)
-        imTau   = ax[1].imshow(np.abs(self.tau * self.domain), cmap='jet')
+        imTau   = ax[1].imshow(np.abs(self.tau * self.domain), cmap='jet', vmax = 2*self.tau_crit)
         imZ     = ax[2].imshow(self.Z, cmap='gist_earth')
         imChan  = ax[3].imshow(
             (self.domain * (1 + .25 * self.boundary + 1 * self.chan_original + 10 * (self.chan - self.chan_original))),
