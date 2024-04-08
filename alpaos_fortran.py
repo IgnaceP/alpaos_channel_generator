@@ -14,14 +14,20 @@ from scipy.ndimage import binary_dilation, binary_erosion
 import alpaos_channel_generator.laplacian_fortran as lapl_f
 from alpaos_channel_generator.inject_interpolate import inject, expand
 
+from alpaos_channel_generator.pathlength import calculatePathLength
+
 class AlpaosChannelCreator:
-    def __init__(self, Hstart, K, chan, domain, H0, Z, resolution, fn_tif = 'test.tif'):
-        self.Hstart             = np.asarray(Hstart, dtype = "float64")
+    def __init__(self, Hstart, K, chan, pathlength, domain, H0, Z, resolution, name = 'Churute_new_creeks',fn_tif = 'test.tif'):
+
+        self.name           = name
+
+        self.Hstart         = np.asarray(Hstart, dtype = "float64")
         self.H              = Hstart.copy()
         self.K              = K
         self.chan           = chan
         self.domain         = domain
         self.H0             = H0
+        self.pl             = pathlength
         self.Z              = Z
         self.Z_orig         = Z.copy()
         self.fn_tif         = fn_tif
@@ -30,6 +36,7 @@ class AlpaosChannelCreator:
 
         self.H_maxs         = []
         self.total_counter  = 0
+        self.total_iterations = 0
 
         self.chan_original  = self.chan.copy()
         
@@ -145,8 +152,24 @@ class AlpaosChannelCreator:
         return neighbours
 
     def flowdir(self):
-        Hgrid = Raster(self.H, self.grid.viewfinder)
-        self.fdir = self.grid.flowdir(Hgrid)
+
+        # Create new artificial water surface map/bathymetry map
+        Hnew = (-self.chan*(1/((self.pl+1)/10000))*self.domain+ (self.chan == 0)*self.H)
+        Hnew[self.domain == 0] = np.nan
+
+        # Create Raster object
+        Hgrid = Raster(Hnew, self.grid.viewfinder)
+
+        # Condition DEM
+        # ----------------------
+        # Fill pits in DEM
+        pit_filled_dem = self.grid.fill_pits(Hgrid)
+
+        # Resolve flats in DEM
+        inflated_dem = self.grid.resolve_flats(pit_filled_dem)
+
+        # Compute flow direction grid
+        self.fdir = self.grid.flowdir(inflated_dem)
     def watershed(self, index):
         """
         Function to apply the watershed algorithm to a water surface map
@@ -209,7 +232,9 @@ class AlpaosChannelCreator:
 
         t0 = time.time()
         H_agg = inject(self.H, agg_level)
-        K_agg = inject(self.K, agg_level)
+        #dist, [ni, nj] = bwdist(H_agg>0, return_indices=True, return_distances=True)
+        #H_agg = np.asfortranarray(H_agg[ni, nj])
+        K_agg = np.zeros_like(H_agg) + np.min(self.K)
 
         domain_agg = inject(self.domain, agg_level, method='max')
         if np.log2(agg_level)-1 > 0:
@@ -218,9 +243,10 @@ class AlpaosChannelCreator:
         domain_agg[:, -1] = 0;
         domain_agg[-1, :] = 0;
         domain_agg[:, 0] = 0
+        H_agg *= domain_agg
         bi_agg, bj_agg = self.initiateBoundaryConditions(domain_agg)
         om_agg = np.logical_not(domain_agg)
-        ch_2 = inject(self.chan, agg_level, method = 'max')
+        ch_2 = inject(self.chan*self.domain, agg_level, method = 'max')
         rows_agg, cols_agg = H_agg.shape
         res_agg = self.resolution * agg_level
 
@@ -291,14 +317,17 @@ class AlpaosChannelCreator:
 
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001,
               H_max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
-              stepsize = 1000, agg_levels = [8,4,2]):
+              stepsize = 1000, agg_levels = [4,2], simul_chan_exp = 3):
 
             self.tau_crit                       = tau_crit
+            self.T                              = T
+            self.simul_chan_exp                 = simul_chan_exp
             self.catch                          = np.zeros_like(self.chan)
 
             for iter in range(iterations):
 
                 print(f"Step: {iter+1}/{iterations}")
+                self.total_iterations += 1
 
                 if agg_levels:
                     for agg_level in agg_levels:
@@ -329,15 +358,20 @@ class AlpaosChannelCreator:
                 self.exceedance = exceedance                    = tau_excess * self.neigh
                 exceedance_i, exceedance_j                      = np.where(exceedance > 0)
                 exceedance_flat                                 = exceedance[exceedance_i, exceedance_j]
-                exceedance_ij_sorted                            = np.argsort(exceedance_flat)[::-1]
-                n_exceedances                                   = len(exceedance_ij_sorted)
+                exc_new_order                                   = np.argsort(exceedance_flat)[::-1]
+                exceedance_i                                    = exceedance_i[exc_new_order]
+                exceedance_j                                    = exceedance_j[exc_new_order]
+                n_exceedances                                   = len(exceedance_i)
 
                 # select sites where the creeks will expand
                 t = 0
                 new_n = 0
-                while n_exceedances > 0:
+                if n_exceedances == 0:
+                    break
+                while True:
                     R                       = np.random.rand()
-                    i,j = exceedance_i[exceedance_ij_sorted[t]], exceedance_j[exceedance_ij_sorted[t]]
+                    i                       = exceedance_i[t]
+                    j                       = exceedance_j[t]
                     Ps = self.calculate_PS(i, j, T = T)
                     if R > Ps:
                         new_chan = True
@@ -365,13 +399,14 @@ class AlpaosChannelCreator:
                         self.Z[i,j] = self.Z_orig[i,j] - D
 
                         # in one iterations, only distant channels can expand
-                        dist_ij = (exceedance_ij_sorted-i)**2 + (exceedance_ij_sorted-j)**2
-                        distant_channels_mask = (dist_ij > 10)
+                        dist_ij = (exceedance_i-i)**2 + (exceedance_j-j)**2
+                        distant_channels_mask = (dist_ij > 50)
 
                         if np.sum(distant_channels_mask) > 0:
-                            exceedance_ij_sorted = exceedance_ij_sorted[distant_channels_mask]
+                            exceedance_i = exceedance_i[distant_channels_mask]
+                            exceedance_j = exceedance_j[distant_channels_mask]
                             t += 1
-                            if t == len(exceedance_ij_sorted):
+                            if t == len(exceedance_i):
                                 break
                         else:
                             break
@@ -381,12 +416,13 @@ class AlpaosChannelCreator:
 
                         new_chan = False
 
-                        if new_n == 3:
+                        if new_n == simul_chan_exp:
                             break
 
+                
                 # calculate watershed for all new channel cells
                 new_chan_i, new_chan_j = np.where(self.newchan == 1)
-
+                t0 = time.time()
                 for counter, (i, j) in enumerate(zip(new_chan_i, new_chan_j)):
                     catch           = float(np.sum(self.watershed([i,j])))*self.resolution**2
                     self.catch[i,j] = catch
@@ -398,12 +434,21 @@ class AlpaosChannelCreator:
                         self.chan[i-bi:i+bi, j-bi:j+bi] = 1
                         self.Z[i-bi:i+bi, j-bi:j+bi] = self.Z_orig[i-bi:i+bi, j-bi:j+bi] - D
                     print('Recalculating channel dimensions: %.2f %%' % (100*(counter+1)/len(new_chan_i)), end = '\r')
+                t1 = time.time()
+
+                print(f'Calculating channel dimensions took {int(t1-t0)} seconds.')
+
+                # update path length
+                self.pl = calculatePathLength(self.chan * self.domain, self.pl, self.resolution)
+
                 print('\n')
-
-
                 print("---------------------------------------------------------------------------------------------")
 
-    def plot(self):
+                if iter%100 == 0:
+                    self.save(f'{self.name}.alp')
+                    fig, ax = self.plot(save = True)
+
+    def plot(self, save = False):
 
         # Plot the final grid
         tau = self.tau
@@ -414,8 +459,7 @@ class AlpaosChannelCreator:
         ax.append(fig.add_subplot(3, 2, 1))
         ax.append(fig.add_subplot(3, 2, 3))
         ax.append(fig.add_subplot(3, 2, 5))
-        ax.append(fig.add_subplot(3, 2, (2, 4)))
-        ax.append(fig.add_subplot(3, 2, 6))
+        ax.append(fig.add_subplot(3, 2, (2, 6)))
 
         imH     = ax[0].imshow(self.H, cmap='viridis')
         contH   = ax[0].contour(self.H, levels=10, colors='white', linewidths=0.25, alpha = .5)
@@ -424,17 +468,16 @@ class AlpaosChannelCreator:
         imChan  = ax[3].imshow(
             (self.domain * (1 + .25 * self.boundary + 1 * self.chan_original + 10 * (self.chan - self.chan_original))),
             cmap='Reds')
-        lHmax = ax[4].plot(self.H_maxs)
-
-        ax[4].set_ylabel('Hmax [m]')
-        ax[4].set_xlabel('Iterations')
 
         for i, im in enumerate([imH, imTau, imZ, imChan]):
-            ax[i].set_title([r'$H_1$ [cm]', 'Shear stress [Pa]', "Bottom elevation [z]", 'Channel network'][i])
+            ax[i].set_title([r'$H_1$ [cm]', 'Shear stress [Pa]', "Bottom elevation [z]", f'Channel network\n{self.total_iterations} steps'][i])
 
             if i != 3:
                 divider = make_axes_locatable(ax[i])
                 cax = divider.append_axes("right", size="5%", pad=0.1)
                 cb = fig.colorbar(im, cax=cax, orientation='vertical')
+
+        if save:
+            fig.savefig(f'{self.name}.png')
 
         return fig, ax
