@@ -17,7 +17,7 @@ from alpaos_channel_generator.inject_interpolate import inject, expand
 from alpaos_channel_generator.pathlength import calculatePathLength
 
 class AlpaosChannelCreator:
-    def __init__(self, Hstart, K, chan, pathlength, domain, H0, Z, resolution, name = 'Churute_new_creeks',fn_tif = 'test.tif'):
+    def __init__(self, Hstart, K, chan, pathlength, domain, H0, Z, resolution, meta, name = 'Churute_new_creeks',fn_tif = 'test.tif'):
 
         self.name           = name
 
@@ -33,6 +33,8 @@ class AlpaosChannelCreator:
         self.fn_tif         = fn_tif
         self.newchan        = np.zeros_like(self.chan)
         self.resolution     = resolution
+
+        self.meta           = meta
 
         self.H_maxs         = []
         self.total_counter  = 0
@@ -214,7 +216,7 @@ class AlpaosChannelCreator:
 
         return ps
 
-    def agg(self, agg_level=2, stepsize = 1000, tolerance = 1e-6):
+    def agg(self, agg_level=2, stepsize = 1000, tolerance = 1e-6, print_progress = True):
         """
         Method to decrease resolution and solve the laplacian equation
         :param agg_level: 
@@ -228,12 +230,11 @@ class AlpaosChannelCreator:
         if self.H.shape[0] % agg_level != 0 or self.H.shape[1] % agg_level != 0:
             raise ValueError('Dimensions of input rasters should be divisible by the aggregation level.')
 
-        print('Agreggating over level %i ...' % agg_level, end = '\r')
+        if print_progress:
+            print('Agreggating over level %i ...' % agg_level, end = '\r')
 
         t0 = time.time()
         H_agg = inject(self.H, agg_level)
-        #dist, [ni, nj] = bwdist(H_agg>0, return_indices=True, return_distances=True)
-        #H_agg = np.asfortranarray(H_agg[ni, nj])
         K_agg = np.zeros_like(H_agg) + np.min(self.K)
 
         domain_agg = inject(self.domain, agg_level, method='max')
@@ -281,7 +282,8 @@ class AlpaosChannelCreator:
             self.H[self.boundary_i, self.boundary_j] > 0]
 
         t1 = time.time()
-        print('Agreggating over level %i took %i iterations over %.0f seconds.' % (agg_level, t, (t1-t0)))
+        if print_progress:
+            print('Agreggating over level %i took %i iterations over %.0f seconds.' % (agg_level, t, (t1-t0)))
 
     def laplacianSolver(self, H_max_iterations=100000, min_iterations=500, tolerance=1e-6, stepsize = 10000):
 
@@ -317,28 +319,29 @@ class AlpaosChannelCreator:
 
     def solve(self, iterations = 100, gamma = 9810, tau_crit = 0.001,
               H_max_iterations = 100000, H_min_iterations = [100,10], tolerance = 1e-7, T = "Hmean",
-              stepsize = 1000, agg_levels = [4,2], simul_chan_exp = 3):
+              stepsize = 1000, agg_levels = [4,2], simul_chan_exp = 3, print_progress = True, print_agg_progress = True):
 
             self.tau_crit                       = tau_crit
             self.T                              = T
             self.simul_chan_exp                 = simul_chan_exp
             self.catch                          = np.zeros_like(self.chan)
 
+
             for iter in range(iterations):
 
-                print(f"Step: {iter+1}/{iterations}")
+                if print_progress: print(f"Step: {iter+1}/{iterations}")
                 self.total_iterations += 1
 
                 if agg_levels:
                     for agg_level in agg_levels:
-                        self.agg(agg_level = agg_level, stepsize = 100, tolerance = tolerance*stepsize)
+                        self.agg(agg_level = agg_level, stepsize = 100, tolerance = tolerance*stepsize, print_progress = print_progress & print_agg_progress)
 
-                print("Solving Poisson equation ...", end='\r')
+                if print_progress: print("Solving Poisson equation ...", end='\r')
                 time0 = time.time()
                 self.laplacianSolver(H_max_iterations = H_max_iterations, min_iterations = H_min_iterations[min(self.total_counter,1)],
                                      tolerance = tolerance*stepsize, stepsize = stepsize)
                 time1 = time.time()
-                print(f'Solving Poisson equation took {self.counter} iterations over {int(time1-time0)} seconds.')
+                if print_progress: print(f'Solving Poisson equation took {self.counter} iterations over {int(time1-time0)} seconds.')
 
                 if np.sum(np.isnan(self.H)) > 0:
                     raise ValueError('There are NaN values in the water surface map.')
@@ -366,9 +369,15 @@ class AlpaosChannelCreator:
                 # select sites where the creeks will expand
                 t = 0
                 new_n = 0
+
                 if n_exceedances == 0:
                     break
+
                 while True:
+
+                    if t == len(exceedance_i):
+                        break
+
                     R                       = np.random.rand()
                     i                       = exceedance_i[t]
                     j                       = exceedance_j[t]
@@ -384,7 +393,7 @@ class AlpaosChannelCreator:
                         new_chan = False
 
                     if new_chan:
-                        print(f'Took the the {t+1}th of {n_exceedances} candidates: i = {i}, j = {j}')
+                        if print_progress: print(f'Took the the {t+1}th of {n_exceedances} candidates: i = {i}, j = {j}')
 
                         # set new channel cell
                         self.chan[i,j] = 1
@@ -433,16 +442,16 @@ class AlpaosChannelCreator:
                     for bi in range(Bi):
                         self.chan[i-bi:i+bi, j-bi:j+bi] = 1
                         self.Z[i-bi:i+bi, j-bi:j+bi] = self.Z_orig[i-bi:i+bi, j-bi:j+bi] - D
-                    print('Recalculating channel dimensions: %.2f %%' % (100*(counter+1)/len(new_chan_i)), end = '\r')
+                    if print_progress: print('Recalculating channel dimensions: %.2f %%' % (100*(counter+1)/len(new_chan_i)), end = '\r')
                 t1 = time.time()
 
-                print(f'Calculating channel dimensions took {int(t1-t0)} seconds.')
+                if print_progress: print(f'Calculating channel dimensions took {int(t1-t0)} seconds.')
 
                 # update path length
-                self.pl = calculatePathLength(self.chan * self.domain, self.pl, self.resolution)
+                self.pl = calculatePathLength(self.chan * self.domain, self.pl, self.resolution, print_flag= print_progress)
 
-                print('\n')
-                print("---------------------------------------------------------------------------------------------")
+                if print_progress: print('\n')
+                if print_progress: print("---------------------------------------------------------------------------------------------")
 
                 if iter%100 == 0:
                     self.save(f'{self.name}.alp')

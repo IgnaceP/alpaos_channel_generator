@@ -25,7 +25,10 @@ subroutine laplaciansolver(h, k, boundary_i, boundary_j, outside_mask, chan, row
         
         do i = 2, rows - 1
             do j = 2, cols - 1
-                h(i,j) = (h_old(i - 1, j) + h_old(i + 1, j) + h_old(i, j - 1) + h_old(i, j + 1) - (resolution ** 2) * k(i, j)) / 4.0
+                if (outside_mask(i,j) == 0) then
+                    h(i,j) = (h_old(i - 1, j) + h_old(i + 1, j) + h_old(i, j - 1) + h_old(i, j + 1) &
+                    - (resolution ** 2) * k(i, j)) / 4.0
+                end if
             end do
         end do
         
